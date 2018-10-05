@@ -1,0 +1,6 @@
+[package]
+name = "blood-sucker"
+version = "0.1.0"
+authors = ["James Clemer <clemer19@gmail.com>"]
+
+[dependencies]
