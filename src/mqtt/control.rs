@@ -1,54 +1,48 @@
-use std::io;
-use std::io::prelude::*;
+use std::io::{Error, ErrorKind};
+use std::io::Read;
+use std::io::Result;
+use std::io::Write;
+use mqtt::*;
 
-struct Packet {
-    fixed_header: FixedHeader,
-    variable_header: Option<VariableHeader>,
-    payload: Option<Payload>
+pub struct Packet<'a> {
+    pub fixed_header: FixedHeader,
+    pub variable_header: Option<VariableHeader<'a>>,
+    pub payload: Option<Vec<u8>>
 }
 
+// https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Figure_2.2_-
 // https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Table_2.4_Size
-struct FixedHeader {
-    control_packet_type: ControlPacketType,
-    flags: [bool; 4],
-    remaining_length: RemainingLength
+pub struct FixedHeader {
+    pub control_packet_type: ControlPacketType,
+    pub flags: [bool; 4],
+    pub remaining_length: u32, // actually a lower-bounded type encoded in up to 4 bytes
 }
 
-impl serde::Serde for FixedHeader {
-    fn ser(&self) -> Vec<u8> {
-        let mut bytes = Vec::<u8>::new();
+impl Serde for FixedHeader {
+    fn ser(&self, sink: &mut Write) -> Result<usize> {
+        let remaining_length_bytes =
+            RemainingLength::encode(self.remaining_length)
+            .map(|r| { r.bytes() })?;
+        let rem_len_written = sink.write(&remaining_length_bytes)?;
+
         let ctrl_bits = self.control_packet_type.to_byte();
+        let ctrl_bits_written = sink.write(&[ctrl_bits])?;
+
         let flag_bits = self.flags
             .iter()
             .enumerate()
-            .fold(0_u8, |acc, (idx, bit)| { acc + (bit as u8) << (4_u8 - idx) });
-        match self.remaining_length  {
-            One(zero) => bytes.push(zero),
-            Two(zero, one) => {
-                bytes.push(zero);
-                bytes.push(one);
-            },
-            One(zero, one, two) => {
-                bytes.push(zero);
-                bytes.push(one);
-                bytes.push(two);
-            },
-            One(zero, one, two, three) => {
-                bytes.push(zero);
-                bytes.push(one);
-                bytes.push(two);
-                bytes.push(three);
-            }
-        }
-        bytes
+            .fold(0_u8, |acc, (idx, bit)| { acc + (*bit as u8) << (4_u8 - idx as u8) });
+        let flag_bits_written = sink.write(&[flag_bits])?;
+
+        Ok(rem_len_written + ctrl_bits_written + flag_bits_written)
     }
 
-    fn de(bytes: &[u8]) -> std::io::Result<Packet, &str> {
-        Err("not implemented")
+    fn de(_source: &mut Read) -> Result<(Self, usize)> {
+        Err(Error::new(ErrorKind::Other, "not implemented"))
     }
 }
 
-enum ControlPacketType {
+pub enum ControlPacketType {
     ReservedLow,
     Connect,
     Connack,
@@ -67,52 +61,8 @@ enum ControlPacketType {
     ReservedHigh
 }
 
-enum RemainingLength {
-    One(u8),
-    Two(u8, u8),
-    Three(u8, u8, u8),
-    Four(u8, u8, u8, u8)
-}
-
-enum VariableHeader {
-    Connect {
-        user_name: bool,
-        password: bool,
-        will_retain: bool,
-        will_qos: bool,
-        will_flag: bool,
-        clean_session: bool,
-        keep_alive: u16
-    },
-    Connack {
-        session_present: bool,
-        return_code: ConnackReturnCode
-    },
-    Publish {
-        topic_name: &str,
-        packet_id: Option<u16>
-    },
-    Puback      {  packet_id: Option<u16> },
-    Pubrec      {  packet_id: Option<u16> },
-    Pubrel      {  packet_id: Option<u16> },
-    Pubcomp     {  packet_id: Option<u16> },
-    Subscribe   {  packet_id: Option<u16> },
-    Suback      {  packet_id: Option<u16> },
-    Unsubscribe {  packet_id: Option<u16> },
-    Unsuback    {  packet_id: Option<u16> },
-}
-
-enum ConnackReturnCode {
-    /* 0 */    Accepted,
-    /* 1 */    UnacceptableProtocolVersion,
-    /* 2 */    IdentifierRejected,
-    /* 3 */    ServerUnavailable,
-    /* 4 */    BadUsernameOrPassword,
-    /* 5 */    NotAuthorized,
-}
-
 impl ControlPacketType {
-    fn to_byte(self) -> u8 {
+    fn to_byte(&self) -> u8 {
         match self {
             ControlPacketType::ReservedLow => 0,
             ControlPacketType::Connect => 1,
@@ -133,31 +83,27 @@ impl ControlPacketType {
         }
     }
 
-    fn from_bytes(&[u8]) -> Result<u8, String> {
-        Err("Not yet implemented".to_string())
+    fn from_bytes(_bytes: &[u8]) -> Result<u8> {
+        Err(Error::new(ErrorKind::Other, "Not yet implemented".to_string()))
     }
 }
 
 impl FixedHeader {
-    fn serialize(self) -> [u8; 2] {
-        control_packet_type
-    }
-
-    fn flags(self, dup: bool, qos: qos::QualityOfService, retain: bool) -> [bool; 4] {
-        return match self {
+    fn flags(&self, dup: bool, qos: QualityOfService, retain: bool) -> [bool; 4] {
+        match self.control_packet_type {
             ControlPacketType::Publish => {
                 let mut flags = [false, false, false, false];
                 flags[0] = dup;
                 match qos {
-                    qos::QualityOfService::AtMostOnce => {
+                    QualityOfService::AtMostOnce => {
                         flags[1] = false;
                         flags[2] = false;
                     },
-                    qos::QualityOfService::AtLeastOnce => {
+                    QualityOfService::AtLeastOnce => {
                         flags[1] = false;
                         flags[2] = true;
                     },
-                    qos::QualityOfService::ExactlyOnce => {
+                    QualityOfService::ExactlyOnce => {
                         flags[1] = true;
                         flags[2] = false;
                     }
@@ -170,55 +116,5 @@ impl FixedHeader {
             ControlPacketType::Unsubscribe => [false, false, true, false],
             _ => [false, false, false, false]
         }
-    }
-}
-
-impl RemainingLength {
-    fn bytes() -> Vec<u8> {
-        match self {
-            One(b0) => vec!(b0),
-            Two(b0, b1) => vec!(b0, b1),
-            Three(b0, b1, b2) => vec!(b0, b1, b2),
-            Four(b0, b1, b2, b3) => vec!(b0, b1, b2, b3),
-        }
-    }
-}
-
-impl TryFrom<u32> for RemainingLength {
-    type Error = String;
-
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
-        const MAX_SIZE: u32 = 268_435_455;
-        match value {
-            0 => Ok(vec![0x00]),
-            _ if value > MAX_SIZE => Err("Out of range".to_string()),
-            _  => {
-                let mut output = Vec::<u8>::new();
-                let mut x = value;
-                while x > 0 {
-                    let mut encoded: u8 = (x % 128) as u8;
-                    x = x / 128;
-                    if x > 0 {
-                        encoded = encoded | 128u8;
-                    }
-                    output.push(encoded);
-                }
-                Ok(output)
-            }
-        }
-    }
-}
-
-impl Into<u32> for RemainingLength {
-    fn into(self) -> u32 {
-        self.bytes()
-            .iter()
-            .enumerate()
-            .fold(0, |value, (idx, byte)| {
-                let multiplier = 128_u32.pow((idx + 1) as u32);
-                let byte_value = (byte & 127_u8) as u32;
-                (value as u32) + byte_value * multiplier
-            })
-
     }
 }
