@@ -1,19 +1,21 @@
 mod mqtt {
+    mod qos;
+
     // https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Figure_2.1_-
     struct ControlPacket {
         fixed_header: FixedHeader,
         variable_header: Option<VariableHeader>,
         payload: Option<Payload>
     }
-    
+
     struct VariableHeader {
-        protocol_name: Vec<u8>,
-        protocol_level: Any,
-        connect_flags: Any,
-        keep_alive: Any
+        connect_flags: ConnectFlags,
+        keep_alive: u16
     }
 
-    struct Payload {
+    struct WillFlags {
+        retain: bool,
+        qos: qos::QualityOfService,
     }
 
     // https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Figure_2.2_-
@@ -23,96 +25,32 @@ mod mqtt {
         remaining_length: Vec<u8> // serialized as per figure 2.2.3
     }
 
-        // https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Table_2.1_-
-    enum ControlPacketType {
-        ReservedLow,
-        Connect,
-        Connack,
-        Publish,
-        Puback,
-        Pubrec,
-        Pubrel,
-        Pubcomp,
-        Subscribe,
-        Suback,
-        Unsubscribe,
-        Unsuback,
-        Pingreq,
-        Pingresp,
-        Disconnect,
-        ReservedHigh
-    }
-
-    enum QualityOfService {
-        AtMostOnce,
-        AtLeastOnce,
-        ExactlyOnce
-    }
-
-    // https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Table_2.4_Size
-    fn encode_remaining_length(len: u32) -> Result<Vec<u8>, String> {
-        const MAX_SIZE: u32 = 268_435_455;
-        match len {
-            0 => Ok(vec![0x00]),
-            _ if len > MAX_SIZE => Err("Out of range".to_string()),
-            _  => {
-                let mut output = Vec::<u8>::new();
-                let mut x = len;
-                while x > 0 {
-                    let mut encoded: u8 = (x % 128) as u8;
-                    x = x / 128;
-                    if x > 0 {
-                        encoded = encoded | 128u8;
-                    }
-                    output.push(encoded);
-                }
-                Ok(output)
-            },
+    // The prefix is the protocol_name + protocol_level: [0; 4; 'M'; 'Q'; 'T'; 'T'; 4; ]
+    // protocol_name is always 6 bytes: [0; 4; 'M'; 'Q'; 'T'; 'T'] (4: u16, "MQTT")
+    // protocol_level for 3.11 is 4: u8
+    impl VariableHeader {
+        fn as_bytes(self) -> [u8; 10] {
+            let mut bytes: [u8; 10] = [0; 10];
+            bytes[1] = 4_u8;
+            bytes[2] = b'M';
+            bytes[3] = b'Q';
+            bytes[4] = b'T';
+            bytes[5] = b'T';
+            bytes[6] = 4_u8;
+            bytes[7] = self.connect_flags.into();
+            bytes[8] = (self.keep_alive >> 8_u16) as u8;
+            bytes[9] = (self.keep_alive % (u8::max_value() as u16)) as u8;
+            bytes
         }
     }
 
-    fn decode_remaining_length(bytes: Vec<u8>) -> Result<u32, String> {
-        if bytes.len() > 4 {
-            Err("Too many bytes".to_string())
-        } else {
-            Ok(bytes.iter()
-               .enumerate()
-               .fold(0, |value, (idx, byte)| {
-                   let multiplier = 128_u32.pow((idx + 1) as u32);
-                   let byte_value = (byte & 127_u8) as u32;
-                   (value as u32) + byte_value * multiplier
-               }))
+    impl From<WillFlags> for u8 {
+        fn from(will_flags: WillFlags) -> Self {
+            let retain_bit: u8 = ((will_flags.retain as u8) << 3_u8) as u8;
+            let qos_bits: u8 = (u8::from(will_flags.qos) << 1_u8) as u8;
+            let will_flag: u8 = true as u8;
+            retain_bit | qos_bits | will_flag
         }
     }
 
-    impl ControlPacketType {
-        fn flags(&self, dup: bool, qos: QualityOfService, retain: bool) -> [bool; 4] {
-            return match self {
-                ControlPacketType::Publish => {
-                    let mut flags = [false, false, false, false];
-                    flags[0] = dup;
-                    match qos {
-                        QualityOfService::AtMostOnce => {
-                            flags[1] = false;
-                            flags[2] = false;
-                        },
-                        QualityOfService::AtLeastOnce => {
-                            flags[1] = false;
-                            flags[2] = true;
-                        },
-                        QualityOfService::ExactlyOnce => {
-                            flags[1] = true;
-                            flags[2] = true;
-                        }
-                    }
-                    flags[3] = retain;
-                    flags
-                }, 
-                ControlPacketType::Pubrel => [false, false, true, false],
-                ControlPacketType::Subscribe => [false, false, true, false],
-                ControlPacketType::Unsubscribe => [false, false, true, false], 
-                _ => [false, false, false, false]
-            }
-        }
-    }
 }
