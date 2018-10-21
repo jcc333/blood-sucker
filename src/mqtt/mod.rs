@@ -12,3 +12,6 @@ pub use self::variable_header::*;
 
 mod control;
 pub use self::control::*;
+
+mod fixed_header;
+pub use self::fixed_header::*;
