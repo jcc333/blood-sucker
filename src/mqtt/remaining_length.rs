@@ -8,13 +8,12 @@ pub enum RemainingLength {
 }
 
 impl RemainingLength {
-    const MAX_SIZE: u32 = 268_435_455;
-    const TERMINAL_BYTE: u8 = 127;
 
     pub fn encode(value: u32) -> Result<Self> {
+        let max_size = 268_435_455u32;
         if value == 0 {
             Ok(RemainingLength::One(0u8))
-        } else if value <= RemainingLength::MAX_SIZE {
+        } else if value <= max_size {
             let mut output = Vec::<u8>::new();
             let mut x = value;
             while x > 0 {
@@ -52,7 +51,7 @@ impl RemainingLength {
             .enumerate()
             .fold(0, |value, (idx, byte)| {
                 let multiplier = 128_u32.pow((idx + 1) as u32);
-                let byte_value = (byte & RemainingLength::TERMINAL_BYTE) as u32;
+                let byte_value = (byte & 127u8) as u32;
                 (value as u32) + byte_value * multiplier
             })
     }

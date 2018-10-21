@@ -7,6 +7,16 @@ pub enum QualityOfService {
     ExactlyOnce
 }
 
+impl QualityOfService {
+    pub fn bits(&self) -> (bool, bool) {
+        match *self {
+            QualityOfService::AtMostOnce => (false, false),
+            QualityOfService::AtLeastOnce => (false, true),
+            QualityOfService::ExactlyOnce => (true, false)
+        }
+    }
+}
+
 impl Serde for QualityOfService {
     fn ser(&self, sink: &mut Write) -> Result<usize> {
         let byte = match &self {
