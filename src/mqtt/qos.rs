@@ -1,6 +1,7 @@
 use mqtt::*;
 use std::io::{Error, ErrorKind, Read, Result, Write};
 
+#[derive(Copy, Clone)]
 pub enum QualityOfService {
     AtMostOnce,
     AtLeastOnce,

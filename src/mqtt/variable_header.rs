@@ -1,7 +1,9 @@
+use std::io::{Error, ErrorKind, Read, Result, Write};
 use mqtt::*;
 
 pub type PacketId = u16;
 
+#[derive(Copy, Clone)]
 pub enum VariableHeader<'a> {
     Connect {
         username: bool,
@@ -20,12 +22,22 @@ pub enum VariableHeader<'a> {
         topic_name: &'a str,
         packet_id: Option<PacketId>
     },
-    Puback      { packet_id: PacketId },
-    Pubrec      { packet_id: PacketId },
-    Pubrel      { packet_id: PacketId },
-    Pubcomp     { packet_id: PacketId },
-    Subscribe   { packet_id: PacketId },
-    Suback      { packet_id: PacketId },
-    Unsubscribe { packet_id: PacketId },
-    Unsuback    { packet_id: PacketId },
+    Puback(PacketId),
+    Pubrec(PacketId),
+    Pubrel(PacketId),
+    Pubcomp(PacketId),
+    Subscribe(PacketId),
+    Suback(PacketId),
+    Unsubscribe(PacketId),
+    Unsuback(PacketId),
+}
+
+impl<'a> Serde for VariableHeader<'a> {
+    fn ser(&self, sink: &mut Write) -> Result<usize> {
+        Err(Error::new(ErrorKind::Other, "not implemented"))
+    }
+
+    fn de(source: &mut Read) -> Result<(Self, usize)> {
+        Err(Error::new(ErrorKind::Other, "not implemented"))
+    }
 }

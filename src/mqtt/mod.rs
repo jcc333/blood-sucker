@@ -19,5 +19,8 @@ pub use self::fixed_header::*;
 mod connack;
 pub use self::connack::*;
 
+mod payload;
+pub use self::payload::*;
+
 mod message;
 pub use self::message::*;

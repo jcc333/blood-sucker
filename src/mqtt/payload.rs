@@ -1,4 +1,4 @@
-use std::io::{Error, ErrorKind, Result};
+use std::io::{Error, ErrorKind, Read, Result, Write};
 use mqtt::*;
 
 type TopicLength = u16;
@@ -6,21 +6,17 @@ type TopicLength = u16;
 pub enum Payload<'a> {
     Connect {
         client_id: &'a str,
-        user_name: &'a str,
-        password: &'a str,
-        retain: bool,
-        qos: QualityOfService,
         will: Option<(&'a str, &'a str)>,
-        clean_session: bool,
-        keep_alive: u16
+        username: &'a str,
+        password: &'a str
     },
     Publish(&'a str),
     Subscribe(Vec<(TopicLength, &'a str, QualityOfService)>),
     Suback(Vec<Option<QualityOfService>>),
-    Unsubscribe(Vec<Option<QualityOfService>>)
+    Unsubscribe(Vec<&'a str>)
 }
 
-pub struct SubackReturn {
+pub enum SubackReturn {
     AtMostOnce,
     AtLeastOnce,
     ExactlyOnce,
@@ -30,7 +26,7 @@ pub struct SubackReturn {
 impl SubackReturn {
     fn from_qos(qos: Option<QualityOfService>) -> Self {
         match qos {
-            None => Failure,
+            None => SubackReturn::Failure,
             Some(QualityOfService::AtMostOnce) => SubackReturn::AtMostOnce,
             Some(QualityOfService::AtLeastOnce) => SubackReturn::AtLeastOnce,
             Some(QualityOfService::ExactlyOnce) => SubackReturn::ExactlyOnce
@@ -38,12 +34,14 @@ impl SubackReturn {
     }
 
     fn to_qos(&self) -> Option<QualityOfService> {
-        Failure => None,
-        SubAckReturn::AtMostOnce => Some(QualityOfService::AtMostOnce),
-        SubAckReturn::AtLeastOnce => Some(QualityOfService::AtLeastOnce),
-        SubAckReturn::ExactlyOnce => Some(QualityOfService::ExactlyOnce)
+        match self {
+            SubackReturn::Failure => None,
+            SubackReturn::AtMostOnce => Some(QualityOfService::AtMostOnce),
+            SubackReturn::AtLeastOnce => Some(QualityOfService::AtLeastOnce),
+            SubackReturn::ExactlyOnce => Some(QualityOfService::ExactlyOnce)
+        }
     }
-    
+
     fn to_byte(&self) -> u8 {
         match self {
             SubackReturn::AtMostOnce => 0u8,
@@ -67,3 +65,14 @@ impl SubackReturn {
         }
     }
 }
+
+impl<'a> Serde for Payload<'a> {
+    fn ser(&self, sink: &mut Write) -> Result<usize> {
+        Err(Error::new(ErrorKind::Other, "not implemented"))
+    }
+
+    fn de(source: &mut Read) -> Result<(Self, usize)> {
+        Err(Error::new(ErrorKind::Other, "not implemented"))
+    }
+}
+

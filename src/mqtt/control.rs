@@ -1,6 +1,6 @@
 use std::io::{Error, ErrorKind, Result};
-use mqtt::*;
 
+#[derive(Copy, Clone)]
 pub enum ControlPacketType {
     ReservedLow,
     Connect,

@@ -1,3 +1,4 @@
+#[derive(Copy, Clone)]
 pub enum ConnackReturnCode {
     /* 0 */    Accepted,
     /* 1 */    UnacceptableProtocolVersion,
