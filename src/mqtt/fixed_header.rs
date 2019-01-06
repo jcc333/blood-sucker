@@ -12,11 +12,6 @@ pub struct FixedHeader {
 
 impl Serde for FixedHeader {
     fn ser(&self, sink: &mut Write) -> Result<usize> {
-        let remaining_length_bytes =
-            RemainingLength::encode(self.remaining_length)
-            .map(|r| { r.bytes() })?;
-        let rem_len_written = sink.write(&remaining_length_bytes)?;
-
         let ctrl_bits = self.control_packet_type.to_byte();
         let ctrl_bits_written = sink.write(&[ctrl_bits])?;
 
@@ -25,7 +20,12 @@ impl Serde for FixedHeader {
             .enumerate()
             .fold(0_u8, |acc, (idx, bit)| { acc + (*bit as u8) << (4_u8 - idx as u8) });
         let flag_bits_written = sink.write(&[flag_bits])?;
-        let v = vec!(1,2,3);
+
+        let remaining_length_bytes =
+            RemainingLength::encode(self.remaining_length)
+            .map(|r| { r.bytes() })?;
+        let rem_len_written = sink.write(&remaining_length_bytes)?;
+
         Ok(rem_len_written + ctrl_bits_written + flag_bits_written)
     }
 
