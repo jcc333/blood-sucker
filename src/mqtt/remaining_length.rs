@@ -8,7 +8,6 @@ pub enum RemainingLength {
 }
 
 impl RemainingLength {
-
     pub fn encode(value: u32) -> Result<Self> {
         let max_size = 268_435_455u32;
         if value == 0 {
