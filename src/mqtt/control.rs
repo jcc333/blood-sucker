@@ -1,4 +1,5 @@
 use std::io::{Error, ErrorKind, Result};
+use std::fmt;
 
 #[derive(Copy, Clone)]
 pub enum ControlPacketType {
@@ -42,7 +43,28 @@ impl ControlPacketType {
         }
     }
 
-    fn from_bytes(_bytes: &[u8]) -> Result<u8> {
-        Err(Error::new(ErrorKind::Other, "Not yet implemented".to_string()))
+    fn from_bytes(bytes: &[u8]) -> Result<Self> {
+        match bytes[0] {
+            0 => Ok(ControlPacketType::ReservedLow),
+            1 => Ok(ControlPacketType::Connect),
+            2 => Ok(ControlPacketType::Connack),
+            3 => Ok(ControlPacketType::Publish),
+            4 => Ok(ControlPacketType::Puback),
+            5 => Ok(ControlPacketType::Pubrec),
+            6 => Ok(ControlPacketType::Pubrel),
+            7 => Ok(ControlPacketType::Pubcomp),
+            8 => Ok(ControlPacketType::Subscribe),
+            9 => Ok(ControlPacketType::Suback),
+            10 => Ok(ControlPacketType::Unsubscribe),
+            11 => Ok(ControlPacketType::Unsuback),
+            12 => Ok(ControlPacketType::Pingreq),
+            13 => Ok(ControlPacketType::Pingresp),
+            14 => Ok(ControlPacketType::Disconnect),
+            15 => Ok(ControlPacketType::ReservedHigh),
+            n => {
+                let msg = format!("{} is not a valid control packet type: [0, 16)", n);
+                Err(Error::new(ErrorKind::InvalidData, msg))
+            }
+        }
     }
 }
