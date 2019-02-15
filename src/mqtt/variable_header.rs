@@ -32,6 +32,27 @@ pub enum VariableHeader<'a> {
     Unsuback(PacketId),
 }
 
+impl<'a> VariableHeader<'a> {
+    pub fn len(&self) -> u32 {
+        match self {
+            VariableHeader::Connect{
+                username:_,
+                password: _,
+                will_retain: _,
+                will_qos: _,
+                will_flag: _,
+                clean_session: _,
+                keep_alive: _
+            } => 10u32,
+            VariableHeader::Publish{ topic_name, packet_id: Some(_) } =>
+                (topic_name.len() + 2) as u32,
+            VariableHeader::Publish{ topic_name, packet_id: None } =>
+                topic_name.len() as u32,
+            _ => 2u32
+        }
+    }
+}
+
 impl<'a> Serde for VariableHeader<'a> {
     fn ser(&self, sink: &mut Write) -> Result<usize> {
         Err(Error::new(ErrorKind::Other, "not implemented"))

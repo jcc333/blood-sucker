@@ -1,6 +1,12 @@
 [package]
-name = "blood-sucker"
+name = "mqtt"
 version = "0.1.0"
 authors = ["James Clemer <clemer19@gmail.com>"]
+
+description = "An MQTT protocol implementation"
+readme = "README.md"
+
+homepage = "https://github.com/jcc333/blood-sucker"
+repo = "https://github.com/jcc333/blood-sucker"
 
 [dependencies]

@@ -1,5 +1,4 @@
 use std::io::{Error, ErrorKind, Result};
-use std::fmt;
 
 #[derive(Copy, Clone)]
 pub enum ControlPacketType {
@@ -43,8 +42,8 @@ impl ControlPacketType {
         }
     }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        match bytes[0] {
+    pub fn from_byte(b: u8) -> Result<Self> {
+        match b {
             0 => Ok(ControlPacketType::ReservedLow),
             1 => Ok(ControlPacketType::Connect),
             2 => Ok(ControlPacketType::Connack),

@@ -1,8 +1,6 @@
 use std::io::{Error, ErrorKind, Read, Result, Write};
 use mqtt::*;
 
-type TopicLength = u16;
-
 pub enum Payload<'a> {
     Connect {
         client_id: &'a str,
@@ -11,9 +9,28 @@ pub enum Payload<'a> {
         password: &'a str
     },
     Publish(&'a str),
-    Subscribe(Vec<(TopicLength, &'a str, QualityOfService)>),
-    Suback(Vec<Option<QualityOfService>>),
-    Unsubscribe(Vec<&'a str>)
+    Subscribe(&'a[(&'a str, QualityOfService)]),
+    Suback(&'a[Option<QualityOfService>]),
+    Unsubscribe(&'a[&'a str])
+}
+
+impl<'a> Payload<'a> {
+    pub fn len(&self) -> usize {
+        match self {
+            Payload::Connect{ client_id, will: Some((topic, msg)), username, password } =>
+                client_id.len() + topic.len() + msg.len() + username.len() + password.len(),
+            Payload::Connect{ client_id, will: None, username, password } =>
+                client_id.len() + username.len() + password.len(),
+            Payload::Publish(msg) =>
+                msg.len(),
+            Payload::Subscribe(filters) =>
+                filters.iter().map(|(t, _)| { t.len() + 3 }).sum(),
+            Payload::Suback(qoss) =>
+                qoss.len(),
+            Payload::Unsubscribe(topics) =>
+                topics.iter().map(|t| { t.len() + 2 }).sum()
+        }
+    }
 }
 
 pub enum SubackReturn {
@@ -57,11 +74,11 @@ impl SubackReturn {
             1u8 => Ok(SubackReturn::AtLeastOnce),
             2u8 => Ok(SubackReturn::ExactlyOnce),
             128u8 => Ok(SubackReturn::Failure),
-            _ => Err(Error::new(
+            _ =>
+                Err(Error::new(
                     ErrorKind::InvalidData,
                     "suback return codes must be 0: at most once, 1: at least once, 2: exactly once, or 128: failure"
                 ))
-
         }
     }
 }
@@ -75,4 +92,3 @@ impl<'a> Serde for Payload<'a> {
         Err(Error::new(ErrorKind::Other, "not implemented"))
     }
 }
-

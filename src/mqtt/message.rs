@@ -1,5 +1,6 @@
 use mqtt::*;
 use std::io::{Error, ErrorKind, Read, Result, Write};
+use std::convert::TryFrom;
 
 #[derive(Copy, Clone)]
 pub struct Will<'a> {
@@ -56,14 +57,8 @@ pub enum Message<'a> {
 impl<'a> Message<'a> {
     fn packet_type(&self) -> ControlPacketType {
         match *self {
-            Message::Connect {
-                client_id: _,
-                username: _,
-                password: _,
-                will: _,
-                clean_session: _,
-                keep_alive: _
-            } =>
+            Message::Connect { client_id: _, username: _, password: _,
+                               will: _, clean_session: _, keep_alive: _ } =>
                 ControlPacketType::Connect,
             Message::Connack { session_present: _, return_code: _ } =>
                 ControlPacketType::Connack,
@@ -103,16 +98,17 @@ impl<'a> Message<'a> {
         }
     }
 
-    fn remaining_length(&self) -> u32 {
-        0u32
-    }
-
-    fn fixed_header(&self) -> FixedHeader {
-        FixedHeader{
-            control_packet_type: self.packet_type(),
-            flags: self.flags(),
-            remaining_length: self.remaining_length()
-        }
+    fn remaining_length(
+        vho: &Option<VariableHeader<'a>>,
+        plo: &Option<Payload<'a>>
+    ) -> Result<RemainingLength> {
+        let vh_len = vho.map_or(0, |v| { v.len() }) as u32;
+        let pl_len = match plo {
+            None => 0u32,
+            Some(plo) => plo.len() as u32
+        };
+         //   plo.map_or(0, |p| { p.len() as u32 }) as u32;
+        RemainingLength::try_from((vh_len + pl_len) as u32)
     }
 
     fn variable_header(self) -> Option<VariableHeader<'a>> {
@@ -137,14 +133,14 @@ impl<'a> Message<'a> {
                     will_retain: retain,
                     will_qos: qos,
                     will_flag: flag,
-                    clean_session: clean_session,
-                    keep_alive: keep_alive
+                    clean_session,
+                    keep_alive
                 })
             },
             Message::Connack { session_present, return_code } =>
                 Some(VariableHeader::Connack {
-                    session_present: session_present,
-                    return_code: return_code
+                    session_present,
+                    return_code
                 }),
             Message::Publish { dup, qos, retain, topic, packet_id, payload } =>
                 Some(VariableHeader::Publish { topic_name: topic, packet_id: packet_id }),
@@ -171,8 +167,8 @@ impl<'a> Message<'a> {
                 username,
                 password,
                 will,
-                clean_session,
-                keep_alive
+                clean_session: _,
+                keep_alive: _
             } => {
                 let will_pair = match will {
                     Some(Will{ retain: _, qos: _, topic, message }) => Some((*topic, *message)),
@@ -185,20 +181,14 @@ impl<'a> Message<'a> {
                     password
                 })
             },
-            Message::Publish { dup, qos, retain, topic, packet_id, payload } =>
+            Message::Publish { dup: _, qos: _, retain: _, topic: _, packet_id: _, payload } =>
                 Some(Payload::Publish(payload)),
-            Message::Subscribe { packet_id, topic_filters } => {
-                let filters_with_length =
-                    topic_filters
-                    .iter()
-                    .map(move |(topic, qos)| { (topic.len() as u16, *topic, *qos) })
-                    .collect::<Vec<_>>();
-                Some(Payload::Subscribe(filters_with_length))
-            },
-            Message::Suback { packet_id, return_codes } =>
-                Some(Payload::Suback(return_codes.to_vec())),
-            Message::Unsubscribe { packet_id, topic_filters } =>
-                Some(Payload::Unsubscribe(topic_filters.to_vec())),
+            Message::Subscribe { packet_id: _, topic_filters } =>
+                Some(Payload::Subscribe(topic_filters)),
+            Message::Suback { packet_id: _, return_codes } =>
+                Some(Payload::Suback(return_codes)),
+            Message::Unsubscribe { packet_id: _, topic_filters } =>
+                Some(Payload::Unsubscribe(topic_filters)),
             _ => None
         }
     }
@@ -206,14 +196,23 @@ impl<'a> Message<'a> {
 
 impl<'a> Serde for Message<'a> {
     fn ser(&self, sink: &mut Write) -> Result<usize> {
-        let fixed_header_len = self.fixed_header().ser(sink)?;
-        let var_header_len = self.variable_header().map_or(Ok(0), |v| { v.ser(sink) })?;
-        let payload_len = self.payload().map_or(Ok(0), |p| { p.ser(sink) })?;
-        Ok(fixed_header_len + var_header_len + payload_len)
+        let control_packet_type = self.packet_type();
+        let flags = self.flags();
+        let variable_header = self.variable_header(); // vho
+        let payload = self.payload(); // plo
+        let remaining_length = Message::remaining_length(
+            &variable_header,
+            &payload
+        )?;
+        let fixed_header = FixedHeader{ control_packet_type, flags, remaining_length };
+        let mut written = fixed_header.ser(sink)?;
+        written += variable_header.map_or(Ok(0), |v| { v.ser(sink) })?;
+        written += payload.map_or(Ok(0), |p| { p.ser(sink) })?;
+        Ok(written)
     }
 
     fn de(source: &mut Read) -> Result<(Self, usize)> {
-        let (fixed_header, fixed_header_len) = FixedHeader::de(source)?;
+        let (fixed_header, _) = FixedHeader::de(source)?;
         match fixed_header.control_packet_type {
             ControlPacketType::ReservedLow =>
                 raise_reserved("Cannot use control-packet-type 0, 'reserved low'"),

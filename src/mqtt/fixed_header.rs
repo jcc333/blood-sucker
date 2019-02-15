@@ -1,35 +1,57 @@
-use std::io::{Error, ErrorKind, Read, Result, Write};
+use std::io::{Read, Result, Write};
 use mqtt::*;
 
 // https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Figure_2.2_-
 // https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Table_2.4_Size
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct FixedHeader {
     pub control_packet_type: ControlPacketType,
     pub flags: [bool; 4],
-    pub remaining_length: u32, // actually a lower-bounded type encoded in up to 4 bytes
+    pub remaining_length: RemainingLength
+}
+
+impl Copy for FixedHeader{}
+
+impl FixedHeader {
+    fn to_first_byte(&self) -> u8 {
+        let ctrl_bits = self.control_packet_type.to_byte();
+        let flag_bits = self.flags
+            .iter()
+            .enumerate()
+            .fold(
+                0_u8,
+                |acc, (idx, bit)| {acc + (*bit as u8) << (4_u8 - idx as u8)}
+            );
+        (ctrl_bits << 4) & flag_bits
+    }
+
+    fn from_first_byte(b: u8) -> Result<(ControlPacketType, [bool; 4])> {
+        let ctrl_type = ControlPacketType::from_byte(b >> 4)?;
+        let mut flags = [false; 4];
+        for idx in 0..3 {
+            flags[idx] = (b & (1u8 << idx)) != 0;
+        }
+        Ok((ctrl_type, flags))
+    }
 }
 
 impl Serde for FixedHeader {
     fn ser(&self, sink: &mut Write) -> Result<usize> {
-        let ctrl_bits = self.control_packet_type.to_byte();
-        let ctrl_bits_written = sink.write(&[ctrl_bits])?;
-
-        let flag_bits = self.flags
-            .iter()
-            .enumerate()
-            .fold(0_u8, |acc, (idx, bit)| { acc + (*bit as u8) << (4_u8 - idx as u8) });
-        let flag_bits_written = sink.write(&[flag_bits])?;
-
-        let remaining_length_bytes =
-            RemainingLength::encode(self.remaining_length)
-            .map(|r| { r.bytes() })?;
-        let rem_len_written = sink.write(&remaining_length_bytes)?;
-
-        Ok(rem_len_written + ctrl_bits_written + flag_bits_written)
+        let written = sink.write(&[self.to_first_byte()])?;
+        let written = written + self.remaining_length.ser(sink)?;
+        Ok(written)
     }
 
     fn de(source: &mut Read) -> Result<(Self, usize)> {
-        Err(Error::new(ErrorKind::Other, "not implemented"))
+        let mut buf = [0; 1];
+        source.read_exact(&mut buf)?;
+        let (ctrl, flags)  = FixedHeader::from_first_byte(buf[0])?;
+        let (remaining_length, remaining_length_size) = RemainingLength::de(source)?;
+        let fixed_header = FixedHeader{
+            control_packet_type: ctrl,
+            flags: flags,
+            remaining_length: remaining_length
+        };
+        Ok((fixed_header, remaining_length_size + 1))
     }
 }

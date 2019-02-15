@@ -1,6 +1,6 @@
 build:
-	cargo build
+	cargo +nightly build
 test:
-	cargo test
+	cargo +nightly test
 clean:
-	cargo clean
+	cargo +nightly clean
