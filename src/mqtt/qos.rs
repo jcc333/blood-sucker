@@ -1,11 +1,34 @@
 use mqtt::*;
+use std::cmp::Ordering;
 use std::io::{Error, ErrorKind, Read, Result, Write};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum QualityOfService {
     AtMostOnce,
     AtLeastOnce,
     ExactlyOnce
+}
+
+impl Ord for QualityOfService {
+    fn cmp(&self, other: &QualityOfService) -> Ordering {
+        match (self, other) {
+            (QualityOfService::AtLeastOnce, QualityOfService::AtLeastOnce) => Ordering::Equal,
+            (QualityOfService::AtLeastOnce, _) => Ordering::Less,
+
+            (QualityOfService::AtMostOnce, QualityOfService::AtLeastOnce) => Ordering::Greater,
+            (QualityOfService::AtMostOnce, QualityOfService::AtMostOnce) => Ordering::Equal,
+            (QualityOfService::AtMostOnce, QualityOfService::ExactlyOnce) => Ordering::Less,
+
+            (QualityOfService::ExactlyOnce, QualityOfService::ExactlyOnce) => Ordering::Equal,
+            (QualityOfService::ExactlyOnce, _) => Ordering::Greater,
+        }
+    }
+}
+
+impl PartialOrd for QualityOfService {
+    fn partial_cmp(&self, other: &QualityOfService) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl QualityOfService {

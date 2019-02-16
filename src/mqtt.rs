@@ -24,3 +24,7 @@ pub use self::payload::*;
 
 mod message;
 pub use self::message::*;
+
+// TODO: move subscription and message into their own modules
+mod subscription;
+pub use self::subscription::*;

@@ -10,3 +10,5 @@ homepage = "https://github.com/jcc333/blood-sucker"
 repo = "https://github.com/jcc333/blood-sucker"
 
 [dependencies]
+tokio = "0.1.15"
+futures = "0.1.17"
