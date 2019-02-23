@@ -3,34 +3,34 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::net::SocketAddr;
 use std::io::{Error, ErrorKind, Result};
 
-pub struct Session<'a> {
-    filters: BTreeMap<QualityOfService, BTreeSet<&'a str>>,
-    will: Option<Will<'a>>
+pub struct Session {
+    filters: BTreeMap<QualityOfService, BTreeSet<String>>,
+    will: Option<Will>
 }
 
-impl<'a> Session<'a> {
-    fn new(will: Option<Will<'a>>) -> Self {
+impl Session {
+    fn new(will: Option<Will>) -> Self {
         let filters = BTreeMap::new();
         Session{ filters, will }
     }
 
-    fn subscribe(&mut self, qos: QualityOfService, topic_filter: &'a str) -> bool {
+    fn subscribe(&mut self, qos: QualityOfService, topic_filter: String) -> bool {
         self.filters
             .entry(qos).or_insert(BTreeSet::new())
             .insert(topic_filter)
     }
 }
 
-pub struct Sessions<'a> {
-    sessions: HashMap<SocketAddr, Session<'a>>
+pub struct Sessions {
+    sessions: HashMap<SocketAddr, Session>
 }
 
-impl<'a> Sessions<'a> {
+impl Sessions {
     pub fn new() -> Self {
         Sessions{ sessions: HashMap::new() }
     }
 
-    pub fn handle_message<'msg: 'a>(&mut self, addr: &SocketAddr, msg: Message<'msg>) -> Result<()> {
+    pub fn handle_message(&mut self, addr: &SocketAddr, msg: Message) -> Result<()> {
         match msg {
             Message::Connect{
                 client_id,
@@ -73,10 +73,10 @@ impl<'a> Sessions<'a> {
 
     fn connect(&mut self,
                    addr: &SocketAddr,
-                   client_id: &'a str,
-                   username: &'a str,
-                   password: &'a str,
-                   will: Option<Will<'a>>,
+                   client_id: String,
+                   username: String,
+                   password: String,
+                   will: Option<Will>,
                    clean_session: bool,
                    keep_alive: u16
     ) -> Result<()> {
@@ -85,7 +85,7 @@ impl<'a> Sessions<'a> {
             self.sessions.remove(addr);
             Sessions::raise_already_connected()
         } else {
-            self.sessions.insert(addr.clone(), Session::new(will.clone()));
+            self.sessions.insert(addr.clone(), Session::new(will));
             Ok(())
         }
     }
@@ -95,9 +95,9 @@ impl<'a> Sessions<'a> {
                dup: bool,
                qos: QualityOfService,
                retain: bool,
-               topic: &'a str,
+               topic: String,
                packet_id: Option<PacketId>,
-               payload: &'a str) -> Result<()> {
+               payload: String) -> Result<()> {
         println!("publish\t{}", addr.to_string());
         Ok(())
     }
@@ -126,7 +126,7 @@ impl<'a> Sessions<'a> {
         &mut self,
         addr: &SocketAddr,
         packet_id: PacketId,
-        topic_filters: &'a[(&'a str, QualityOfService)]
+        topic_filters: Vec<(String, QualityOfService)>
     ) -> Result<()> {
         println!("subscribe\t{}", addr.to_string());
         Ok(())
@@ -136,7 +136,7 @@ impl<'a> Sessions<'a> {
         &mut self,
         addr: &SocketAddr,
         packet_id: PacketId,
-        topic_filters: &'a[&'a str]
+        topic_filters: Vec<String>
     ) -> Result<()> {
         println!("unsubscribe\t{}", addr.to_string());
         Ok(())

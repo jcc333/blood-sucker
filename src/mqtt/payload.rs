@@ -4,14 +4,14 @@ use mqtt::*;
 pub enum Payload<'a> {
     Connect {
         client_id: &'a str,
-        will: Option<(&'a str, &'a str)>,
+        will: Option<(String, String)>,
         username: &'a str,
         password: &'a str
     },
     Publish(&'a str),
-    Subscribe(&'a[(&'a str, QualityOfService)]),
+    Subscribe(&'a[(String, QualityOfService)]),
     Suback(&'a[Option<QualityOfService>]),
-    Unsubscribe(&'a[&'a str])
+    Unsubscribe(&'a[String])
 }
 
 impl<'a> Payload<'a> {

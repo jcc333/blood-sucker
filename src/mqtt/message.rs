@@ -2,21 +2,19 @@ use mqtt::*;
 use std::io::{Error, ErrorKind, Read, Result, Write};
 use std::convert::TryFrom;
 
-#[derive(Copy, Clone)]
-pub struct Will<'a> {
+pub struct Will {
     retain: bool,
     qos: QualityOfService,
-    topic: &'a str,
-    message: &'a str
+    topic: String,
+    message: String
 }
 
-#[derive(Copy, Clone)]
-pub enum Message<'a> {
+pub enum Message {
     Connect {
-        client_id: &'a str,
-        username: &'a str,
-        password: &'a str,
-        will: Option<Will<'a>>,
+        client_id: String,
+        username: String,
+        password: String,
+        will: Option<Will>,
         clean_session: bool,
         keep_alive: u16,
     },
@@ -28,9 +26,9 @@ pub enum Message<'a> {
         dup: bool,
         qos: QualityOfService,
         retain: bool,
-        topic: &'a str,
+        topic: String,
         packet_id: Option<PacketId>,
-        payload: &'a str
+        payload: String
     },
     Puback(PacketId),
     Pubrec(PacketId),
@@ -38,15 +36,15 @@ pub enum Message<'a> {
     Pubcomp(PacketId),
     Subscribe {
         packet_id: PacketId,
-        topic_filters: &'a[(&'a str, QualityOfService)]
+        topic_filters: Vec<(String, QualityOfService)>
     },
     Suback {
         packet_id: PacketId,
-        return_codes: &'a[Option<QualityOfService>]
+        return_codes: Vec<Option<QualityOfService>>
     },
     Unsubscribe {
         packet_id: PacketId,
-        topic_filters: &'a[&'a str]
+        topic_filters: Vec<String>
     },
     Unsuback(PacketId),
     Pingreq,
@@ -54,7 +52,7 @@ pub enum Message<'a> {
     Disconnect
 }
 
-impl<'a> Message<'a> {
+impl Message {
     fn packet_type(&self) -> ControlPacketType {
         match *self {
             Message::Connect { client_id: _, username: _, password: _,
@@ -99,10 +97,10 @@ impl<'a> Message<'a> {
     }
 
     fn remaining_length(
-        vho: &Option<VariableHeader<'a>>,
-        plo: &Option<Payload<'a>>
+        vho: &Option<VariableHeader>,
+        plo: &Option<Payload>
     ) -> Result<RemainingLength> {
-        let vh_len = vho.map_or(0, |v| { v.len() }) as u32;
+        let vh_len = vho.as_ref().map_or(0, |v| { v.len() }) as u32;
         let pl_len = match plo {
             None => 0u32,
             Some(plo) => plo.len() as u32
@@ -111,7 +109,7 @@ impl<'a> Message<'a> {
         RemainingLength::try_from((vh_len + pl_len) as u32)
     }
 
-    fn variable_header(self) -> Option<VariableHeader<'a>> {
+    fn variable_header(&self) -> Option<VariableHeader> {
         match self {
             Message::Connect {
                 client_id,
@@ -123,7 +121,7 @@ impl<'a> Message<'a> {
             } => {
                 let (retain, qos, flag) = match will {
                     Some(Will{ retain, qos, topic: _, message: _ }) =>
-                        (retain, qos, true),
+                        (*retain, *qos, true),
                     None =>
                         (false, QualityOfService::AtMostOnce, false)
                 };
@@ -133,29 +131,39 @@ impl<'a> Message<'a> {
                     will_retain: retain,
                     will_qos: qos,
                     will_flag: flag,
-                    clean_session,
-                    keep_alive
+                    clean_session: *clean_session,
+                    keep_alive: *keep_alive
                 })
             },
             Message::Connack { session_present, return_code } =>
                 Some(VariableHeader::Connack {
-                    session_present,
-                    return_code
+                    session_present: *session_present,
+                    return_code: *return_code
                 }),
-            Message::Publish { dup, qos, retain, topic, packet_id, payload } =>
-                Some(VariableHeader::Publish { topic_name: topic, packet_id: packet_id }),
+            Message::Publish {
+                dup,
+                qos,
+                retain,
+                topic,
+                packet_id,
+                payload
+            } =>
+                Some(VariableHeader::Publish{
+                    topic_name: topic.to_string(),
+                    packet_id: *packet_id
+                }),
             Message::Subscribe{ packet_id, topic_filters } =>
-                Some(VariableHeader::Subscribe(packet_id)),
+                Some(VariableHeader::Subscribe(*packet_id)),
             Message::Suback{ packet_id, return_codes } =>
-                Some(VariableHeader::Suback(packet_id)),
+                Some(VariableHeader::Suback(*packet_id)),
             Message::Unsubscribe { packet_id, topic_filters } =>
-                Some(VariableHeader::Unsubscribe(packet_id)),
+                Some(VariableHeader::Unsubscribe(*packet_id)),
             Message::Unsuback(packet_id) =>
-                Some(VariableHeader::Unsuback(packet_id)),
-            Message::Puback(packet_id) => Some(VariableHeader::Puback(packet_id)),
-            Message::Pubrec(packet_id) => Some(VariableHeader::Pubrec(packet_id)),
-            Message::Pubrel(packet_id) => Some(VariableHeader::Pubrel(packet_id)),
-            Message::Pubcomp(packet_id) => Some(VariableHeader::Pubcomp(packet_id)),
+                Some(VariableHeader::Unsuback(*packet_id)),
+            Message::Puback(packet_id) => Some(VariableHeader::Puback(*packet_id)),
+            Message::Pubrec(packet_id) => Some(VariableHeader::Pubrec(*packet_id)),
+            Message::Pubrel(packet_id) => Some(VariableHeader::Pubrel(*packet_id)),
+            Message::Pubcomp(packet_id) => Some(VariableHeader::Pubcomp(*packet_id)),
             _ => None
         }
     }
@@ -171,7 +179,8 @@ impl<'a> Message<'a> {
                 keep_alive: _
             } => {
                 let will_pair = match will {
-                    Some(Will{ retain: _, qos: _, topic, message }) => Some((*topic, *message)),
+                    Some(Will{ retain: _, qos: _, topic, message }) =>
+                        Some((topic.clone(), message.clone())),
                     None => None
                 };
                 Some(Payload::Connect{
@@ -183,7 +192,7 @@ impl<'a> Message<'a> {
             },
             Message::Publish { dup: _, qos: _, retain: _, topic: _, packet_id: _, payload } =>
                 Some(Payload::Publish(payload)),
-            Message::Subscribe { packet_id: _, topic_filters } =>
+            Message::Subscribe { packet_id: _, topic_filters } => 
                 Some(Payload::Subscribe(topic_filters)),
             Message::Suback { packet_id: _, return_codes } =>
                 Some(Payload::Suback(return_codes)),
@@ -194,7 +203,7 @@ impl<'a> Message<'a> {
     }
 }
 
-impl<'a> Serde for Message<'a> {
+impl Serde for Message {
     fn ser(&self, sink: &mut Write) -> Result<usize> {
         let control_packet_type = self.packet_type();
         let flags = self.flags();

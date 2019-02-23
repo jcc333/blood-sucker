@@ -3,8 +3,7 @@ use mqtt::*;
 
 pub type PacketId = u16;
 
-#[derive(Copy, Clone)]
-pub enum VariableHeader<'a> {
+pub enum VariableHeader {
     Connect {
         username: bool,
         password: bool,
@@ -19,7 +18,7 @@ pub enum VariableHeader<'a> {
         return_code: ConnackReturnCode
     },
     Publish {
-        topic_name: &'a str,
+        topic_name: String,
         packet_id: Option<PacketId>
     },
     Puback(PacketId),
@@ -32,7 +31,7 @@ pub enum VariableHeader<'a> {
     Unsuback(PacketId),
 }
 
-impl<'a> VariableHeader<'a> {
+impl VariableHeader {
     pub fn len(&self) -> u32 {
         match self {
             VariableHeader::Connect{
@@ -53,7 +52,7 @@ impl<'a> VariableHeader<'a> {
     }
 }
 
-impl<'a> Serde for VariableHeader<'a> {
+impl Serde for VariableHeader {
     fn ser(&self, sink: &mut Write) -> Result<usize> {
         Err(Error::new(ErrorKind::Other, "not implemented"))
     }
