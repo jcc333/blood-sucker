@@ -16,7 +16,8 @@ fn main() {
     let addr = "127.0.0.1:9002".parse::<SocketAddr>().unwrap();
     let listener = TcpListener::bind(&addr).unwrap();
 
-    let subscriptions: BTreeMap<SocketAddr, mqtt::Session>;
+    let sessions = mqtt::Sessions::new();
+
     // Here we convert the `TcpListener` to a stream of incoming connections
     // with the `incoming` method. We then define how to process each element in
     // the stream with the `for_each` combinator method
