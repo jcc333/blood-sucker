@@ -2,227 +2,259 @@ use mqtt::*;
 use std::io::{Error, ErrorKind, Read, Result, Write};
 use std::convert::TryFrom;
 
-pub struct Will {
-    retain: bool,
-    qos: QualityOfService,
-    topic: String,
-    message: String
-}
+mod connack;
+pub use self::connack::*;
 
-pub enum Message {
-    Connect {
-        client_id: String,
-        username: String,
-        password: String,
-        will: Option<Will>,
-        clean_session: bool,
-        keep_alive: u16,
-    },
-    Connack {
-        session_present: bool,
-        return_code: ConnackReturnCode
-    },
-    Publish {
-        dup: bool,
-        qos: QualityOfService,
-        retain: bool,
-        topic: String,
-        packet_id: Option<PacketId>,
-        payload: String
-    },
-    Puback(PacketId),
-    Pubrec(PacketId),
-    Pubrel(PacketId),
-    Pubcomp(PacketId),
-    Subscribe {
-        packet_id: PacketId,
-        topic_filters: Vec<(String, QualityOfService)>
-    },
-    Suback {
-        packet_id: PacketId,
-        return_codes: Vec<Option<QualityOfService>>
-    },
-    Unsubscribe {
-        packet_id: PacketId,
-        topic_filters: Vec<String>
-    },
-    Unsuback(PacketId),
-    Pingreq,
-    Pingresp,
-    Disconnect
-}
+mod connect;
+pub use self::connect::*;
 
-impl Message {
-    fn packet_type(&self) -> ControlPacketType {
-        match *self {
-            Message::Connect { client_id: _, username: _, password: _,
-                               will: _, clean_session: _, keep_alive: _ } =>
-                ControlPacketType::Connect,
-            Message::Connack { session_present: _, return_code: _ } =>
-                ControlPacketType::Connack,
-            Message::Publish { dup: _, qos: _, retain: _, topic: _, packet_id: _, payload: _ } =>
-                ControlPacketType::Publish,
-            Message::Puback(_) =>
-                ControlPacketType::Puback,
-            Message::Pubrec(_) =>
-                ControlPacketType::Pubrec,
-            Message::Pubrel(_) =>
-                ControlPacketType::Pubrel,
-            Message::Pubcomp(_) =>
-                ControlPacketType::Pubcomp,
-            Message::Subscribe { packet_id: _, topic_filters: _ } =>
-                ControlPacketType::Subscribe,
-            Message::Suback { packet_id: _, return_codes: _ } =>
-                ControlPacketType::Suback,
-            Message::Unsubscribe { packet_id: _, topic_filters: _ } =>
-                ControlPacketType::Unsubscribe,
-            Message::Unsuback(_) => ControlPacketType::Unsuback,
-            Message::Pingreq => ControlPacketType::Pingreq,
-            Message::Pingresp => ControlPacketType::Pingresp,
-            Message::Disconnect => ControlPacketType::Disconnect
-        }
+mod publish;
+pub use self::publish::*;
+
+/// A Message represents an MQTT control packet as per
+/// https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Toc398718018
+pub trait Message {
+    fn packet_type(&self) -> ControlPacketType;
+
+    fn fixed_header(&self) -> Result<FixedHeader> {
+        let remaining_length = self.remaining_length(&None, &None)?;
+        Ok(FixedHeader{
+            packet_type: self.packet_type(),
+            flags: self.flags(),
+            remaining_length: remaining_length
+        })
     }
 
     fn flags(&self) -> [bool; 4] {
-        match self {
-            Message::Publish { dup, qos, retain, topic, packet_id, payload } => {
-                let (qos0, qos1) = qos.bits();
-                [*dup, qos0, qos1, *retain]
-            },
-            Message::Pubrel(_) => [false, false, true, false],
-            Message::Subscribe { packet_id, topic_filters } => [false, false, true, false],
-            Message::Unsubscribe { packet_id, topic_filters } => [false, false, true, false],
-            _ => [false, false, false, false]
-        }
+        [false, false, false, false]
+    }
+
+    fn variable_header(&self) -> Option<VariableHeader> {
+        None
+    }
+
+    fn payload(&self) -> Option<Payload> {
+        None
     }
 
     fn remaining_length(
+        &self,
         vho: &Option<VariableHeader>,
         plo: &Option<Payload>
     ) -> Result<RemainingLength> {
-        let vh_len = vho.as_ref().map_or(0, |v| { v.len() }) as u32;
+        let vho = vho.or(self.variable_header());
+        let plo = plo.or(self.payload());
+        let vh_len = vho.map_or(0, |v| { v.len() }) as u32;
         let pl_len = match plo {
             None => 0u32,
             Some(plo) => plo.len() as u32
         };
-         //   plo.map_or(0, |p| { p.len() as u32 }) as u32;
         RemainingLength::try_from((vh_len + pl_len) as u32)
+    }
+}
+
+pub struct Puback {
+    packet_id: PacketId
+}
+
+impl Message for Puback {
+    fn packet_type(&self) -> ControlPacketType {
+        ControlPacketType::Puback
     }
 
     fn variable_header(&self) -> Option<VariableHeader> {
-        match self {
-            Message::Connect {
-                client_id,
-                username,
-                password,
-                will,
-                clean_session,
-                keep_alive
-            } => {
-                let (retain, qos, flag) = match will {
-                    Some(Will{ retain, qos, topic: _, message: _ }) =>
-                        (*retain, *qos, true),
-                    None =>
-                        (false, QualityOfService::AtMostOnce, false)
-                };
-                Some(VariableHeader::Connect {
-                    username: username.len() != 0,
-                    password: password.len() != 0,
-                    will_retain: retain,
-                    will_qos: qos,
-                    will_flag: flag,
-                    clean_session: *clean_session,
-                    keep_alive: *keep_alive
-                })
-            },
-            Message::Connack { session_present, return_code } =>
-                Some(VariableHeader::Connack {
-                    session_present: *session_present,
-                    return_code: *return_code
-                }),
-            Message::Publish {
-                dup,
-                qos,
-                retain,
-                topic,
-                packet_id,
-                payload
-            } =>
-                Some(VariableHeader::Publish{
-                    topic_name: topic.to_string(),
-                    packet_id: *packet_id
-                }),
-            Message::Subscribe{ packet_id, topic_filters } =>
-                Some(VariableHeader::Subscribe(*packet_id)),
-            Message::Suback{ packet_id, return_codes } =>
-                Some(VariableHeader::Suback(*packet_id)),
-            Message::Unsubscribe { packet_id, topic_filters } =>
-                Some(VariableHeader::Unsubscribe(*packet_id)),
-            Message::Unsuback(packet_id) =>
-                Some(VariableHeader::Unsuback(*packet_id)),
-            Message::Puback(packet_id) => Some(VariableHeader::Puback(*packet_id)),
-            Message::Pubrec(packet_id) => Some(VariableHeader::Pubrec(*packet_id)),
-            Message::Pubrel(packet_id) => Some(VariableHeader::Pubrel(*packet_id)),
-            Message::Pubcomp(packet_id) => Some(VariableHeader::Pubcomp(*packet_id)),
-            _ => None
-        }
+      Some(VariableHeader::Puback(self.packet_id))
+    }
+}
+
+pub struct Pubrec {
+    packet_id: PacketId
+}
+
+impl Message for Pubrec {
+    fn packet_type(&self) -> ControlPacketType {
+        ControlPacketType::Pubrec
+    }
+
+    fn variable_header(&self) -> Option<VariableHeader> {
+        Some(VariableHeader::Pubrec(self.packet_id))
+    }
+}
+
+pub struct Pubrel {
+    packet_id: PacketId
+}
+
+impl Message for Pubrel {
+    fn packet_type(&self) -> ControlPacketType {
+        ControlPacketType::Pubrel
+    }
+
+    fn flags(&self) -> [bool; 4] {
+        [false, false, true, false]
+    }
+
+    fn variable_header(&self) -> Option<VariableHeader> {
+        Some(VariableHeader::Pubrel(self.packet_id))
+    }
+}
+
+pub struct Pubcomp {
+    packet_id: PacketId
+}
+
+impl Message for Pubcomp {
+    fn packet_type(&self) -> ControlPacketType {
+        ControlPacketType::Pubcomp
+    }
+
+    fn variable_header(&self) -> Option<VariableHeader> {
+        Some(VariableHeader::Pubcomp(self.packet_id))
+    }
+}
+
+pub struct Subscribe {
+    packet_id: PacketId,
+    topic_filters: Vec<(String, QualityOfService)>
+}
+
+impl Message for Subscribe {
+    fn packet_type(&self) -> ControlPacketType {
+        ControlPacketType::Subscribe
+    }
+
+    fn flags(&self) -> [bool; 4] {
+        [false, false, true, false]
+    }
+
+    fn variable_header(&self) -> Option<VariableHeader> {
+        Some(VariableHeader::Subscribe(self.packet_id))
     }
 
     fn payload(&self) -> Option<Payload> {
+        Some(Payload::Subscribe(&self.topic_filters))
+    }
+}
+
+pub struct Suback {
+    packet_id: PacketId,
+    return_codes: Vec<Option<QualityOfService>>
+}
+
+impl Message for Suback {
+    fn packet_type(&self) -> ControlPacketType {
+        ControlPacketType::Suback
+    }
+
+    fn variable_header(&self) -> Option<VariableHeader> {
+        Some(VariableHeader::Suback(self.packet_id))
+    }
+
+    fn payload(&self) -> Option<Payload> {
+        Some(Payload::Suback(&self.return_codes))
+    }
+}
+
+pub struct Unsubscribe {
+    packet_id: PacketId,
+    topic_filters: Vec<String>
+}
+
+impl Message for Unsubscribe {
+    fn packet_type(&self) -> ControlPacketType {
+        ControlPacketType::Unsubscribe
+    }
+
+    fn flags(&self) -> [bool; 4] {
+        [false, false, true, false]
+    }
+
+    fn variable_header(&self) -> Option<VariableHeader> {
+        Some(VariableHeader::Unsubscribe(self.packet_id))
+    }
+
+    fn payload(&self) -> Option<Payload> {
+        Some(Payload::Unsubscribe(&self.topic_filters))
+    }
+}
+
+pub struct Unsuback {
+    packet_id: PacketId
+}
+
+impl Message for Unsuback {
+    fn packet_type(&self) -> ControlPacketType {
+        ControlPacketType::Unsuback
+    }
+
+    fn variable_header(&self) -> Option<VariableHeader> {
+        Some(VariableHeader::Unsuback(self.packet_id))
+    }
+}
+
+pub struct Pingreq{}
+impl Message for Pingreq {
+    fn packet_type(&self) -> ControlPacketType {
+        ControlPacketType::Pingreq
+    }
+}
+
+pub struct Pingresp{}
+impl Message for Pingresp {
+    fn packet_type(&self) -> ControlPacketType {
+        ControlPacketType::Pingresp
+    }
+}
+
+pub struct Disconnect{}
+impl Message for Disconnect {
+    fn packet_type(&self) -> ControlPacketType {
+        ControlPacketType::Disconnect
+    }
+}
+
+pub enum WrappedMessage {
+    WConnect(message::Connect),
+    WConnack(message::Connack),
+    WPublish(message::Publish),
+    WPuback(message::Puback),
+    WPubrec(message::Pubrec),
+    WPubrel(message::Pubrel),
+    WPubcomp(message::Pubcomp),
+    WSubscribe(message::Subscribe),
+    WSuback(message::Suback),
+    WUnsubscribe(message::Unsubscribe),
+    WUnsuback(message::Unsuback),
+    WPingreq(message::Pingreq),
+    WPingresp(message::Pingresp),
+    WDisconnect(message::Disconnect)
+}
+
+impl WrappedMessage {
+    fn message(&self) -> &dyn Message {
         match self {
-            Message::Connect{
-                client_id,
-                username,
-                password,
-                will,
-                clean_session: _,
-                keep_alive: _
-            } => {
-                let will_pair = match will {
-                    Some(Will{ retain: _, qos: _, topic, message }) =>
-                        Some((topic.clone(), message.clone())),
-                    None => None
-                };
-                Some(Payload::Connect{
-                    client_id,
-                    will: will_pair,
-                    username,
-                    password
-                })
-            },
-            Message::Publish { dup: _, qos: _, retain: _, topic: _, packet_id: _, payload } =>
-                Some(Payload::Publish(payload)),
-            Message::Subscribe { packet_id: _, topic_filters } => 
-                Some(Payload::Subscribe(topic_filters)),
-            Message::Suback { packet_id: _, return_codes } =>
-                Some(Payload::Suback(return_codes)),
-            Message::Unsubscribe { packet_id: _, topic_filters } =>
-                Some(Payload::Unsubscribe(topic_filters)),
-            _ => None
+            WrappedMessage::WConnect(m) => m,
+            WrappedMessage::WConnack(m) => m,
+            WrappedMessage::WPublish(m) => m,
+            WrappedMessage::WPuback(m) => m,
+            WrappedMessage::WPubrec(m) => m,
+            WrappedMessage::WPubrel(m) => m,
+            WrappedMessage::WPubcomp(m) => m,
+            WrappedMessage::WSubscribe(m) => m,
+            WrappedMessage::WSuback(m) => m,
+            WrappedMessage::WUnsubscribe(m) => m,
+            WrappedMessage::WUnsuback(m) => m,
+            WrappedMessage::WPingreq(m) => m,
+            WrappedMessage::WPingresp(m) => m,
+            WrappedMessage::WDisconnect(m) => m
         }
     }
 }
 
-impl Serde for Message {
-    fn ser(&self, sink: &mut Write) -> Result<usize> {
-        let control_packet_type = self.packet_type();
-        let flags = self.flags();
-        let variable_header = self.variable_header(); // vho
-        let payload = self.payload(); // plo
-        let remaining_length = Message::remaining_length(
-            &variable_header,
-            &payload
-        )?;
-        let fixed_header = FixedHeader{ control_packet_type, flags, remaining_length };
-        let mut written = fixed_header.ser(sink)?;
-        written += variable_header.map_or(Ok(0), |v| { v.ser(sink) })?;
-        written += payload.map_or(Ok(0), |p| { p.ser(sink) })?;
-        Ok(written)
-    }
-
-    fn de(source: &mut Read) -> Result<(Self, usize)> {
+impl Serde for WrappedMessage {
+    fn de(source: &mut Read) -> Result<(WrappedMessage, usize)> {
         let (fixed_header, _) = FixedHeader::de(source)?;
-        match fixed_header.control_packet_type {
+        match fixed_header.packet_type {
             ControlPacketType::ReservedLow =>
                 raise_reserved("Cannot use control-packet-type 0, 'reserved low'"),
             ControlPacketType::Connect =>
@@ -257,6 +289,23 @@ impl Serde for Message {
                 raise_reserved("Cannot use control-packet-type 15, 'reserved high'")
         }
     }
+
+    fn ser(&self, sink: &mut Write) -> Result<usize> {
+        let msg = self.message();
+        let packet_type = msg.packet_type();
+        let flags = msg.flags();
+        let variable_header = msg.variable_header();
+        let payload = msg.payload();
+        let remaining_length = msg.remaining_length(
+            &variable_header,
+            &payload
+        )?;
+        let fixed_header = FixedHeader{ packet_type, flags, remaining_length };
+        let mut written = fixed_header.ser(sink)?;
+        written += variable_header.map_or(Ok(0), |v| { v.ser(sink) })?;
+        written += payload.map_or(Ok(0), |p| { p.ser(sink) })?;
+        Ok(written)
+    }            
 }
 
 fn raise_reserved<T>(msg: &str) -> Result<T> {

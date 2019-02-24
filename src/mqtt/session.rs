@@ -30,9 +30,9 @@ impl Sessions {
         Sessions{ sessions: HashMap::new() }
     }
 
-    pub fn handle_message(&mut self, addr: &SocketAddr, msg: Message) -> Result<()> {
+    pub fn handle_message<'a>(&mut self, addr: &SocketAddr, msg: &'a mqtt::message::Message) -> Result<()> {
         match msg {
-            Message::Connect{
+            Connect{
                 client_id,
                 username,
                 password,
@@ -49,23 +49,23 @@ impl Sessions {
                     clean_session,
                     keep_alive
                 ),
-            Message::Publish{ dup, qos, retain, topic, packet_id, payload } =>
+            Publish{ dup, qos, retain, topic, packet_id, payload } =>
                 self.publish(addr, dup, qos, retain, topic, packet_id, payload),
-            Message::Puback(packet_id) =>
+            Puback{ packet_id } =>
                 self.puback(addr, packet_id),
-            Message::Pubrec(packet_id) =>
+            Pubrec{ packet_id } =>
                 self.pubrec(addr, packet_id),
-            Message::Pubrel(packet_id) =>
+            Pubrel{ packet_id } =>
                 self.pubrel(addr, packet_id),
-            Message::Pubcomp(packet_id) =>
+            Pubcomp{ packet_id } =>
                 self.pubcomp(addr, packet_id),
-            Message::Subscribe{ packet_id, topic_filters } =>
+            Subscribe{ packet_id, topic_filters } =>
                 self.subscribe(addr, packet_id, topic_filters),
-            Message::Unsubscribe{ packet_id, topic_filters } =>
+            Unsubscribe{ packet_id, topic_filters } =>
                 self.unsubscribe(addr, packet_id, topic_filters),
-            Message::Pingreq =>
+            Pingreq{} =>
                 self.pingreq(addr),
-            Message::Disconnect =>
+            Disconnect{} =>
                 self.disconnect(addr),
             _ => Sessions::raise_wrong_direction()
         }

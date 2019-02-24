@@ -27,3 +27,6 @@ pub use self::message::*;
 
 mod session;
 pub use self::session::*;
+
+mod will;
+pub use self::will::*;

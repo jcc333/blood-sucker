@@ -5,7 +5,7 @@ use mqtt::*;
 // https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Table_2.4_Size
 #[derive(Clone)]
 pub struct FixedHeader {
-    pub control_packet_type: ControlPacketType,
+    pub packet_type: ControlPacketType,
     pub flags: [bool; 4],
     pub remaining_length: RemainingLength
 }
@@ -14,7 +14,7 @@ impl Copy for FixedHeader{}
 
 impl FixedHeader {
     fn to_first_byte(&self) -> u8 {
-        let ctrl_bits = self.control_packet_type.to_byte();
+        let ctrl_bits = self.packet_type.to_byte();
         let flag_bits = self.flags
             .iter()
             .enumerate()
@@ -48,7 +48,7 @@ impl Serde for FixedHeader {
         let (ctrl, flags)  = FixedHeader::from_first_byte(buf[0])?;
         let (remaining_length, remaining_length_size) = RemainingLength::de(source)?;
         let fixed_header = FixedHeader{
-            control_packet_type: ctrl,
+            packet_type: ctrl,
             flags: flags,
             remaining_length: remaining_length
         };
