@@ -1,6 +1,7 @@
 #![feature(try_from)]
 extern crate tokio;
 extern crate futures;
+extern crate byteorder;
 
 use futures::Future;
 use std::collections::BTreeMap;

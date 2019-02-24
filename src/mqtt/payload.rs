@@ -1,6 +1,7 @@
 use std::io::{Error, ErrorKind, Read, Result, Write};
 use mqtt::*;
 
+
 pub enum Payload<'a> {
     Connect {
         client_id: &'a str,
@@ -13,7 +14,7 @@ pub enum Payload<'a> {
     Suback(&'a[Option<QualityOfService>]),
     Unsubscribe(&'a[String])
 }
-
+use mqtt::payload::Payload::*;
 impl<'a> Payload<'a> {
     pub fn len(&self) -> usize {
         match self {

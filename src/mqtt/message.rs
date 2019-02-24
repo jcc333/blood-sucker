@@ -8,8 +8,38 @@ pub use self::connack::*;
 mod connect;
 pub use self::connect::*;
 
+mod pingreq;
+pub use self::pingreq::*;
+
+mod pingresp;
+pub use self::pingresp::*;
+
+mod puback;
+pub use self::puback::*;
+
+mod pubcomp;
+pub use self::pubcomp::*;
+
 mod publish;
 pub use self::publish::*;
+
+mod pubrec;
+pub use self::pubrec::*;
+
+mod pubrel;
+pub use self::pubrel::*;
+
+mod suback;
+pub use self::suback::*;
+
+mod subscribe;
+pub use self::subscribe::*;
+
+mod unsuback;
+pub use self::unsuback::*;
+
+mod unsubscribe;
+pub use self::unsubscribe::*;
 
 /// A Message represents an MQTT control packet as per
 /// https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Toc398718018
@@ -53,159 +83,6 @@ pub trait Message {
     }
 }
 
-pub struct Puback {
-    packet_id: PacketId
-}
-
-impl Message for Puback {
-    fn packet_type(&self) -> ControlPacketType {
-        ControlPacketType::Puback
-    }
-
-    fn variable_header(&self) -> Option<VariableHeader> {
-      Some(VariableHeader::Puback(self.packet_id))
-    }
-}
-
-pub struct Pubrec {
-    packet_id: PacketId
-}
-
-impl Message for Pubrec {
-    fn packet_type(&self) -> ControlPacketType {
-        ControlPacketType::Pubrec
-    }
-
-    fn variable_header(&self) -> Option<VariableHeader> {
-        Some(VariableHeader::Pubrec(self.packet_id))
-    }
-}
-
-pub struct Pubrel {
-    packet_id: PacketId
-}
-
-impl Message for Pubrel {
-    fn packet_type(&self) -> ControlPacketType {
-        ControlPacketType::Pubrel
-    }
-
-    fn flags(&self) -> [bool; 4] {
-        [false, false, true, false]
-    }
-
-    fn variable_header(&self) -> Option<VariableHeader> {
-        Some(VariableHeader::Pubrel(self.packet_id))
-    }
-}
-
-pub struct Pubcomp {
-    packet_id: PacketId
-}
-
-impl Message for Pubcomp {
-    fn packet_type(&self) -> ControlPacketType {
-        ControlPacketType::Pubcomp
-    }
-
-    fn variable_header(&self) -> Option<VariableHeader> {
-        Some(VariableHeader::Pubcomp(self.packet_id))
-    }
-}
-
-pub struct Subscribe {
-    packet_id: PacketId,
-    topic_filters: Vec<(String, QualityOfService)>
-}
-
-impl Message for Subscribe {
-    fn packet_type(&self) -> ControlPacketType {
-        ControlPacketType::Subscribe
-    }
-
-    fn flags(&self) -> [bool; 4] {
-        [false, false, true, false]
-    }
-
-    fn variable_header(&self) -> Option<VariableHeader> {
-        Some(VariableHeader::Subscribe(self.packet_id))
-    }
-
-    fn payload(&self) -> Option<Payload> {
-        Some(Payload::Subscribe(&self.topic_filters))
-    }
-}
-
-pub struct Suback {
-    packet_id: PacketId,
-    return_codes: Vec<Option<QualityOfService>>
-}
-
-impl Message for Suback {
-    fn packet_type(&self) -> ControlPacketType {
-        ControlPacketType::Suback
-    }
-
-    fn variable_header(&self) -> Option<VariableHeader> {
-        Some(VariableHeader::Suback(self.packet_id))
-    }
-
-    fn payload(&self) -> Option<Payload> {
-        Some(Payload::Suback(&self.return_codes))
-    }
-}
-
-pub struct Unsubscribe {
-    packet_id: PacketId,
-    topic_filters: Vec<String>
-}
-
-impl Message for Unsubscribe {
-    fn packet_type(&self) -> ControlPacketType {
-        ControlPacketType::Unsubscribe
-    }
-
-    fn flags(&self) -> [bool; 4] {
-        [false, false, true, false]
-    }
-
-    fn variable_header(&self) -> Option<VariableHeader> {
-        Some(VariableHeader::Unsubscribe(self.packet_id))
-    }
-
-    fn payload(&self) -> Option<Payload> {
-        Some(Payload::Unsubscribe(&self.topic_filters))
-    }
-}
-
-pub struct Unsuback {
-    packet_id: PacketId
-}
-
-impl Message for Unsuback {
-    fn packet_type(&self) -> ControlPacketType {
-        ControlPacketType::Unsuback
-    }
-
-    fn variable_header(&self) -> Option<VariableHeader> {
-        Some(VariableHeader::Unsuback(self.packet_id))
-    }
-}
-
-pub struct Pingreq{}
-impl Message for Pingreq {
-    fn packet_type(&self) -> ControlPacketType {
-        ControlPacketType::Pingreq
-    }
-}
-
-pub struct Pingresp{}
-impl Message for Pingresp {
-    fn packet_type(&self) -> ControlPacketType {
-        ControlPacketType::Pingresp
-    }
-}
-
 pub struct Disconnect{}
 impl Message for Disconnect {
     fn packet_type(&self) -> ControlPacketType {
@@ -213,46 +90,46 @@ impl Message for Disconnect {
     }
 }
 
-pub enum WrappedMessage {
-    WConnect(message::Connect),
-    WConnack(message::Connack),
-    WPublish(message::Publish),
-    WPuback(message::Puback),
-    WPubrec(message::Pubrec),
-    WPubrel(message::Pubrel),
-    WPubcomp(message::Pubcomp),
-    WSubscribe(message::Subscribe),
-    WSuback(message::Suback),
-    WUnsubscribe(message::Unsubscribe),
-    WUnsuback(message::Unsuback),
-    WPingreq(message::Pingreq),
-    WPingresp(message::Pingresp),
-    WDisconnect(message::Disconnect)
+pub enum EnumeratedMessage {
+    EConnect(message::Connect),
+    EConnack(message::Connack),
+    EPublish(message::Publish),
+    EPuback(message::Puback),
+    EPubrec(message::Pubrec),
+    EPubrel(message::Pubrel),
+    EPubcomp(message::Pubcomp),
+    ESubscribe(message::Subscribe),
+    ESuback(message::Suback),
+    EUnsubscribe(message::Unsubscribe),
+    EUnsuback(message::Unsuback),
+    EPingreq(message::Pingreq),
+    EPingresp(message::Pingresp),
+    EDisconnect(message::Disconnect)
 }
 
-impl WrappedMessage {
+impl EnumeratedMessage {
     fn message(&self) -> &dyn Message {
         match self {
-            WrappedMessage::WConnect(m) => m,
-            WrappedMessage::WConnack(m) => m,
-            WrappedMessage::WPublish(m) => m,
-            WrappedMessage::WPuback(m) => m,
-            WrappedMessage::WPubrec(m) => m,
-            WrappedMessage::WPubrel(m) => m,
-            WrappedMessage::WPubcomp(m) => m,
-            WrappedMessage::WSubscribe(m) => m,
-            WrappedMessage::WSuback(m) => m,
-            WrappedMessage::WUnsubscribe(m) => m,
-            WrappedMessage::WUnsuback(m) => m,
-            WrappedMessage::WPingreq(m) => m,
-            WrappedMessage::WPingresp(m) => m,
-            WrappedMessage::WDisconnect(m) => m
+            EnumeratedMessage::EConnect(m) => m,
+            EnumeratedMessage::EConnack(m) => m,
+            EnumeratedMessage::EPublish(m) => m,
+            EnumeratedMessage::EPuback(m) => m,
+            EnumeratedMessage::EPubrec(m) => m,
+            EnumeratedMessage::EPubrel(m) => m,
+            EnumeratedMessage::EPubcomp(m) => m,
+            EnumeratedMessage::ESubscribe(m) => m,
+            EnumeratedMessage::ESuback(m) => m,
+            EnumeratedMessage::EUnsubscribe(m) => m,
+            EnumeratedMessage::EUnsuback(m) => m,
+            EnumeratedMessage::EPingreq(m) => m,
+            EnumeratedMessage::EPingresp(m) => m,
+            EnumeratedMessage::EDisconnect(m) => m
         }
     }
 }
 
-impl Serde for WrappedMessage {
-    fn de(source: &mut Read) -> Result<(WrappedMessage, usize)> {
+impl Serde for EnumeratedMessage {
+    fn de(source: &mut Read) -> Result<(EnumeratedMessage, usize)> {
         let (fixed_header, _) = FixedHeader::de(source)?;
         match fixed_header.packet_type {
             ControlPacketType::ReservedLow =>

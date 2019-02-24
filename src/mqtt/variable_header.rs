@@ -1,9 +1,16 @@
-use std::io::{Error, ErrorKind, Read, Result, Write};
+extern crate byteorder;
+
 use mqtt::*;
+use std::io::{Error, ErrorKind, Read, Result, Write};
+use self::byteorder::{BigEndian, WriteBytesExt};
 
 pub type PacketId = u16;
 
-pub enum VariableHeader {
+pub trait VariableHeader<'a> : Serde {
+    pub fn len(&self) -> u16;
+}
+
+pub enum VariableHeader<'a> {
     Connect {
         username: bool,
         password: bool,
@@ -18,7 +25,7 @@ pub enum VariableHeader {
         return_code: ConnackReturnCode
     },
     Publish {
-        topic_name: String,
+        topic_name: &'a str,
         packet_id: Option<PacketId>
     },
     Puback(PacketId),
@@ -31,8 +38,8 @@ pub enum VariableHeader {
     Unsuback(PacketId),
 }
 
-impl VariableHeader {
-    pub fn len(&self) -> u32 {
+impl<'a> VariableHeader<'a> {
+    pub fn len(&self) -> u16 {
         match self {
             VariableHeader::Connect{
                 username:_,
@@ -42,19 +49,26 @@ impl VariableHeader {
                 will_flag: _,
                 clean_session: _,
                 keep_alive: _
-            } => 10u32,
+            } => 10,
             VariableHeader::Publish{ topic_name, packet_id: Some(_) } =>
-                (topic_name.len() + 2) as u32,
+                (topic_name.len() + 2) as u16,
             VariableHeader::Publish{ topic_name, packet_id: None } =>
-                topic_name.len() as u32,
-            _ => 2u32
+                topic_name.len() as u16,
+            _ => 2
         }
     }
 }
 
-impl Serde for VariableHeader {
+impl<'a> Serde for VariableHeader<'a> {
     fn ser(&self, sink: &mut Write) -> Result<usize> {
-        Err(Error::new(ErrorKind::Other, "not implemented"))
+        let len = self.len();
+        sink.write_u16::<BigEndian>(len)?;
+        sink.write("mqtt".as_bytes())?;
+        sink.write(&[4u8])?;
+        let mut flags_byte = 0u8;
+        let reserved = 0;
+        let clean_session = self.clean_session;
+        sink.write()
     }
 
     fn de(source: &mut Read) -> Result<(Self, usize)> {

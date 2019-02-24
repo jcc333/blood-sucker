@@ -30,7 +30,7 @@ impl Sessions {
         Sessions{ sessions: HashMap::new() }
     }
 
-    pub fn handle_message<'a>(&mut self, addr: &SocketAddr, msg: &'a mqtt::message::Message) -> Result<()> {
+    pub fn handle_message<'a>(&mut self, addr: &SocketAddr, msg: &'a message::Message) -> Result<()> {
         match msg {
             Connect{
                 client_id,
