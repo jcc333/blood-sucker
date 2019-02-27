@@ -8,6 +8,9 @@ pub use self::connack::*;
 mod connect;
 pub use self::connect::*;
 
+mod disconnect;
+pub use self::disconnect::*;
+
 mod pingreq;
 pub use self::pingreq::*;
 
@@ -43,7 +46,7 @@ pub use self::unsubscribe::*;
 
 /// A Message represents an MQTT control packet as per
 /// https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Toc398718018
-pub trait Message {
+pub trait Message : FixedHeader + MaybeVariableHeader + MaybePayload + Serde {
     fn packet_type(&self) -> ControlPacketType;
 
     fn fixed_header(&self) -> Result<FixedHeader> {
@@ -80,13 +83,6 @@ pub trait Message {
             Some(plo) => plo.len() as u32
         };
         RemainingLength::try_from((vh_len + pl_len) as u32)
-    }
-}
-
-pub struct Disconnect{}
-impl Message for Disconnect {
-    fn packet_type(&self) -> ControlPacketType {
-        ControlPacketType::Disconnect
     }
 }
 

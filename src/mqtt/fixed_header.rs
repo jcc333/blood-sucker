@@ -3,25 +3,19 @@ use mqtt::*;
 
 // https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Figure_2.2_-
 // https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Table_2.4_Size
-#[derive(Clone)]
-pub struct FixedHeader {
-    pub packet_type: ControlPacketType,
-    pub flags: [bool; 4],
-    pub remaining_length: RemainingLength
+trait FixedHeader : Serde {
+    fn packet_type(&self) -> ControlPacketType;
+    fn flags(&self) -> [bool; 4];
+    fn remaining_length(&self) -> RemainingLength;
 }
-
-impl Copy for FixedHeader{}
 
 impl FixedHeader {
     fn to_first_byte(&self) -> u8 {
-        let ctrl_bits = self.packet_type.to_byte();
-        let flag_bits = self.flags
+        let ctrl_bits = self.packet_type().to_byte();
+        let flag_bits = self.flags()
             .iter()
             .enumerate()
-            .fold(
-                0_u8,
-                |acc, (idx, bit)| {acc + (*bit as u8) << (4_u8 - idx as u8)}
-            );
+            .fold(0u8, |acc, (idx, bit)| { acc + (*bit as u8) << (4u8 - idx as u8) });
         (ctrl_bits << 4) & flag_bits
     }
 
@@ -49,8 +43,8 @@ impl Serde for FixedHeader {
         let (remaining_length, remaining_length_size) = RemainingLength::de(source)?;
         let fixed_header = FixedHeader{
             packet_type: ctrl,
-            flags: flags,
-            remaining_length: remaining_length
+            flags,
+            remaining_length
         };
         Ok((fixed_header, remaining_length_size + 1))
     }
